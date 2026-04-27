@@ -1,0 +1,7 @@
+# ============================================================
+#  OS Deadlock Toolkit — Python Dependencies
+# ============================================================
+
+streamlit>=1.32.0       # Web UI framework (replaces React + Vite)
+plotly>=5.20.0          # Interactive graphs (replaces React Flow + D3)
+pandas>=2.2.0           # Data tables / matrix display
