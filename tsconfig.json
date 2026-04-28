@@ -16,7 +16,7 @@
     "jsx": "react-jsx",
 
     /* Path mapping */
-    "baseUrl": "./src",
+    "baseUrl": ".",
     "paths": {
       "@/*": ["./*"]
     },

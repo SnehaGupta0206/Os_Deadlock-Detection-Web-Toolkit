@@ -1,28 +1,15 @@
 """
 =============================================================================
-  OS DEADLOCK TOOLKIT — Streamlit Application
-  Python equivalent of the full React/TypeScript app (App.tsx + all components)
+  OS DEADLOCK DEFENDER - Fully Dynamic with Real-time Matrix Updates
 =============================================================================
-
-  Run with:
-      cd python_app
-      pip install streamlit plotly pandas
-      streamlit run app.py
-
-=============================================================================
-  Module Mapping  (React → Python)
-  ─────────────────────────────────────────────────────────────────────────
-  src/lib/os-logic.ts          →  os_logic.py        (algorithms)
-  src/components/ResourceGraph →  graph_builder.py   (Plotly RAG)
-  src/components/MatrixTable   →  render_matrices()  (st.dataframe)
-  src/components/Dashboard     →  sidebar controls   (st.sidebar)
-  src/App.tsx                  →  app.py             (this file)
+  Run: streamlit run app.py
 =============================================================================
 """
 
 import streamlit as st
 import pandas as pd
 from copy import deepcopy
+import time
 
 from os_logic import (
     Process,
@@ -38,7 +25,7 @@ from graph_builder import build_rag_figure
 
 
 # ============================================================================
-# 0.  Page Configuration  (must be first Streamlit call)
+# Page Configuration
 # ============================================================================
 
 st.set_page_config(
@@ -50,157 +37,208 @@ st.set_page_config(
 
 
 # ============================================================================
-# 1.  Global CSS  (mirrors Tailwind slate dark theme)
+# Custom CSS - Bright & Visible
 # ============================================================================
 
 st.markdown("""
 <style>
-/* ── Global background ── */
-.stApp { background-color: #f8fafc; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
-/* ── Header banner ── */
-.header-banner {
-    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
-    padding: 1.4rem 2rem;
-    border-radius: 14px;
-    margin-bottom: 1.5rem;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.25);
-}
-.header-title {
-    font-size: 1.9rem;
-    font-weight: 800;
-    color: #f8fafc;
-    margin: 0;
-    letter-spacing: -0.5px;
-}
-.header-subtitle {
-    font-size: 0.8rem;
-    color: #94a3b8;
-    margin: 0;
-}
-.header-badges {
-    display: flex;
-    gap: 0.6rem;
-    flex-wrap: wrap;
-    margin-top: 0.4rem;
-}
-.badge {
-    background: rgba(255,255,255,0.08);
-    color: #cbd5e1;
-    padding: 3px 10px;
-    border-radius: 99px;
-    font-size: 0.72rem;
-    border: 1px solid rgba(255,255,255,0.12);
+* {
+    font-family: 'Inter', sans-serif;
 }
 
-/* ── Section cards ── */
-.section-card {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 1.2rem 1.4rem;
-    margin-bottom: 1.2rem;
-    box-shadow: 0 1px 6px rgba(0,0,0,0.06);
-}
-.section-title {
-    font-size: 1rem;
-    font-weight: 700;
-    color: #1e293b;
-    margin-bottom: 0.8rem;
-    border-left: 4px solid #3b82f6;
-    padding-left: 0.6rem;
+.stApp {
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #020617 100%);
 }
 
-/* ── Result banners ── */
-.safe-banner {
-    background: linear-gradient(135deg,#d1fae5,#a7f3d0);
-    border: 1.5px solid #34d399;
-    border-radius: 10px;
-    padding: 1rem 1.4rem;
-    color: #065f46;
-    font-weight: 600;
-    font-size: 1rem;
-}
-.unsafe-banner {
-    background: linear-gradient(135deg,#fee2e2,#fecaca);
-    border: 1.5px solid #f87171;
-    border-radius: 10px;
-    padding: 1rem 1.4rem;
-    color: #7f1d1d;
-    font-weight: 600;
-    font-size: 1rem;
-}
-
-/* ── Log console ── */
-.log-console {
-    background: #0f172a;
-    border-radius: 10px;
-    padding: 1rem 1.2rem;
-    font-family: 'Courier New', monospace;
-    font-size: 0.82rem;
-    max-height: 260px;
-    overflow-y: auto;
-    border: 1px solid #334155;
-}
-.log-line { margin: 3px 0; color: #94a3b8; }
-.log-line span.step { color: #38bdf8; font-weight: bold; margin-right: 6px; }
-.log-line span.safe  { color: #4ade80; }
-.log-line span.unsafe { color: #f87171; }
-
-/* ── Matrix tables ── */
-.matrix-header {
-    background: #f1f5f9;
-    font-size: 0.78rem;
-    font-weight: 700;
-    color: #475569;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 4px 8px;
-    border-bottom: 1px solid #e2e8f0;
-    border-radius: 8px 8px 0 0;
-}
-
-/* ── Process table ── */
-.proc-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
-.proc-table th {
-    background:#f8fafc; color:#64748b; font-weight:600;
-    text-transform:uppercase; font-size:0.7rem; letter-spacing:0.05em;
-    padding: 6px 10px; border-bottom: 1px solid #e2e8f0;
-}
-.proc-table td { padding: 6px 10px; border-bottom: 1px solid #f1f5f9; color:#334155; }
-.proc-table tr:last-child td { border-bottom: none; }
-
-/* ── Sidebar ── */
-section[data-testid="stSidebar"] {
-    background: #0f172a !important;
-}
-section[data-testid="stSidebar"] * { color: #e2e8f0 !important; }
-section[data-testid="stSidebar"] .stButton button {
-    background: #3b82f6 !important;
-    color: white !important;
-    border: none !important;
-    font-weight: 600;
-    border-radius: 8px;
-    width: 100%;
-}
-section[data-testid="stSidebar"] .stTextInput input,
-section[data-testid="stSidebar"] .stNumberInput input {
-    background: #1e293b !important;
+/* Force all text to be light */
+.stMarkdown, p, div, span, label {
     color: #f1f5f9 !important;
-    border: 1px solid #334155 !important;
-    border-radius: 6px !important;
 }
 
-/* ── Footer ── */
+h1, h2, h3, h4, h5, h6 {
+    color: #ffffff !important;
+}
+
+/* Glass cards */
+.glass-card {
+    background: rgba(30, 41, 59, 0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    border-radius: 24px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+/* Header */
+.header-banner {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    border-radius: 24px;
+    padding: 1.5rem 2rem;
+    margin-bottom: 2rem;
+}
+
+.header-title {
+    font-size: 2.5rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #ffffff, #38bdf8, #818cf8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 0;
+}
+
+/* Stat cards */
+.stat-card {
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(56, 189, 248, 0.05));
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    border-radius: 20px;
+    padding: 1rem;
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #38bdf8, #818cf8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.stat-label {
+    font-size: 0.7rem;
+    color: #cbd5e1 !important;
+    text-transform: uppercase;
+}
+
+/* Buttons */
+.stButton > button {
+    background: linear-gradient(105deg, #0ea5e9 0%, #3b82f6 100%);
+    color: white !important;
+    border: none;
+    border-radius: 40px;
+    font-weight: 600;
+    width: 100%;
+    transition: all 0.3s ease;
+}
+
+.stButton > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(14, 165, 233, 0.4);
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background: rgba(15, 23, 42, 0.95) !important;
+    backdrop-filter: blur(20px);
+    border-right: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+/* Inputs */
+.stTextInput input, .stNumberInput input {
+    background: rgba(51, 65, 85, 0.9) !important;
+    color: #ffffff !important;
+    border: 1px solid #475569 !important;
+    border-radius: 16px !important;
+}
+
+.stTextInput input:focus {
+    border-color: #38bdf8 !important;
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.3) !important;
+}
+
+/* DataFrames - Critical for dynamic updates */
+.dataframe {
+    background: rgba(30, 41, 59, 0.8) !important;
+    border-radius: 16px !important;
+    width: 100% !important;
+}
+
+.dataframe th {
+    background: #1e293b !important;
+    color: #38bdf8 !important;
+    font-weight: 600 !important;
+    padding: 10px !important;
+}
+
+.dataframe td {
+    background: #0f172a !important;
+    color: #e2e8f0 !important;
+    padding: 8px !important;
+    font-family: monospace !important;
+}
+
+/* Log console */
+.log-console {
+    background: #020617;
+    border-radius: 16px;
+    border: 1px solid #334155;
+    padding: 1rem;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.log-line {
+    margin: 8px 0;
+    padding: 6px 0;
+    border-left: 3px solid #0ea5e9;
+    padding-left: 12px;
+}
+
+.log-time {
+    color: #38bdf8;
+    font-weight: bold;
+    margin-right: 12px;
+}
+
+.log-success {
+    color: #4ade80;
+}
+
+.log-error {
+    color: #f87171;
+}
+
+.log-info {
+    color: #cbd5e6;
+}
+
+/* Banners */
+.success-banner, .error-banner {
+    border-radius: 16px;
+    padding: 1rem 1.5rem;
+    margin: 1rem 0;
+}
+
+.success-banner {
+    background: linear-gradient(135deg, #064e3b, #065f46);
+    border: 1px solid #10b981;
+}
+
+.error-banner {
+    background: linear-gradient(135deg, #7f1d1d, #991b1b);
+    border: 1px solid #ef4444;
+}
+
+/* Metrics */
+[data-testid="stMetricValue"] {
+    font-size: 1.8rem !important;
+    font-weight: 800 !important;
+    background: linear-gradient(135deg, #38bdf8, #818cf8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* Footer */
 .footer {
     text-align: center;
-    color: #94a3b8;
-    font-size: 0.76rem;
-    padding: 2rem 0 1rem;
-    border-top: 1px solid #e2e8f0;
+    padding: 2rem;
+    color: #64748b !important;
+    border-top: 1px solid #334155;
     margin-top: 2rem;
 }
 </style>
@@ -208,11 +246,10 @@ section[data-testid="stSidebar"] .stNumberInput input {
 
 
 # ============================================================================
-# 2.  Session State  (mirrors React useState in App.tsx)
+# Session State
 # ============================================================================
 
-def _init_state():
-    """Initialise Streamlit session state once (equivalent to React's useState)."""
+def init_session_state():
     if "total_resources" not in st.session_state:
         st.session_state.total_resources = list(INITIAL_TOTAL)
     if "processes" not in st.session_state:
@@ -222,616 +259,457 @@ def _init_state():
     if "safe_sequence" not in st.session_state:
         st.session_state.safe_sequence = []
     if "is_safe" not in st.session_state:
-        st.session_state.is_safe = None       # None = not run yet
-    if "request_log" not in st.session_state:
-        st.session_state.request_log = []
+        st.session_state.is_safe = None
+    if "feedback" not in st.session_state:
+        st.session_state.feedback = ""
+    if "update_counter" not in st.session_state:
+        st.session_state.update_counter = 0
 
-_init_state()
+init_session_state()
 
 
 # ============================================================================
-# 3.  Derived State  (mirrors computed `available` in App.tsx)
+# Helper Functions with Forced Updates
 # ============================================================================
 
-def get_available() -> list:
-    return compute_available(
-        st.session_state.total_resources,
-        st.session_state.processes
-    )
+def get_available():
+    return compute_available(st.session_state.total_resources, st.session_state.processes)
 
-
-def get_resource_names() -> list:
-    """A, B, C, D … per resource type."""
+def get_resource_names():
     return [chr(65 + i) for i in range(len(st.session_state.total_resources))]
 
-
-# ============================================================================
-# 4.  Action Handlers  (mirror React event handlers in App.tsx / Dashboard.tsx)
-# ============================================================================
-
-def handle_reset():
-    """Mirrors handleReset() in App.tsx."""
-    st.session_state.processes       = deepcopy(INITIAL_PROCESSES)
-    st.session_state.total_resources = list(INITIAL_TOTAL)
-    st.session_state.is_safe         = None
-    st.session_state.simulation_log  = []
-    st.session_state.safe_sequence   = []
-    st.session_state.request_log     = []
-
+def force_update():
+    """Force a UI refresh by incrementing counter"""
+    st.session_state.update_counter += 1
 
 def run_simulation():
-    """Mirrors runSimulation() in App.tsx → calls checkSafety()."""
-    available = get_available()
-    state = SystemState(
-        processes       = st.session_state.processes,
-        total_resources = st.session_state.total_resources,
-        available       = available,
-    )
-    result = check_safety(state)
-    st.session_state.is_safe        = result.is_safe
-    st.session_state.safe_sequence  = result.safe_sequence
-    st.session_state.simulation_log = result.log
+    if len(st.session_state.processes) == 0:
+        st.session_state.feedback = "⚠️ No processes to simulate! Add some processes first."
+        force_update()
+        return
+    
+    with st.spinner("🔍 Running Banker's Safety Algorithm..."):
+        time.sleep(0.2)
+        state = SystemState(
+            processes=st.session_state.processes,
+            total_resources=st.session_state.total_resources,
+            available=get_available(),
+        )
+        result = check_safety(state)
+        st.session_state.is_safe = result.is_safe
+        st.session_state.safe_sequence = result.safe_sequence
+        st.session_state.simulation_log = result.log
+        st.session_state.feedback = "✅ Algorithm completed!"
+        force_update()
 
+def handle_reset():
+    st.session_state.processes = deepcopy(INITIAL_PROCESSES)
+    st.session_state.total_resources = list(INITIAL_TOTAL)
+    st.session_state.is_safe = None
+    st.session_state.simulation_log = []
+    st.session_state.safe_sequence = []
+    st.session_state.feedback = "🔄 System reset to default configuration"
+    force_update()
 
-def handle_add_process(alloc_str: str, max_str: str):
-    """Mirrors handleAddProcess() in Dashboard.tsx → App.tsx."""
+def handle_add_process(alloc_str, max_str):
     try:
         alloc = [int(x.strip()) for x in alloc_str.split(",")]
         max_r = [int(x.strip()) for x in max_str.split(",")]
     except ValueError:
-        st.sidebar.error("⚠️  Enter only numbers separated by commas.")
+        st.session_state.feedback = "❌ Invalid input! Use numbers separated by commas"
+        force_update()
         return
 
     n = len(st.session_state.total_resources)
     if len(alloc) != n or len(max_r) != n:
-        st.sidebar.error(f"⚠️  Please enter exactly {n} values (one per resource).")
+        st.session_state.feedback = f"❌ Please enter exactly {n} values"
+        force_update()
         return
 
     for i in range(n):
         if alloc[i] > max_r[i]:
-            st.sidebar.error(f"⚠️  Allocation[{i}] ({alloc[i]}) cannot exceed Max[{i}] ({max_r[i]}).")
+            st.session_state.feedback = f"❌ Allocation cannot exceed Max for resource {chr(65+i)}"
+            force_update()
+            return
+        if alloc[i] < 0 or max_r[i] < 0:
+            st.session_state.feedback = "❌ Values cannot be negative"
+            force_update()
             return
 
-    pid  = len(st.session_state.processes)
+    pid = len(st.session_state.processes)
     need = calculate_need(max_r, alloc)
-    new_proc = Process(id=pid, name=f"P{pid}", allocation=alloc,
-                       max=max_r, need=need)
+    new_proc = Process(id=pid, name=f"P{pid}", allocation=alloc, max=max_r, need=need, finished=False)
     st.session_state.processes.append(new_proc)
-    st.session_state.is_safe = None    # Reset simulation — state changed
+    st.session_state.is_safe = None
+    st.session_state.feedback = f"✅ Process P{pid} created successfully!"
+    force_update()
 
-
-def handle_update_resources(res_str: str):
-    """Mirrors handleUpdateResources() in App.tsx."""
+def handle_update_resources(res_str):
     try:
         res = [int(x.strip()) for x in res_str.split(",")]
+        if any(r <= 0 for r in res):
+            st.session_state.feedback = "⚠️ Resource values must be positive"
+            force_update()
+            return
+        st.session_state.total_resources = res
+        st.session_state.is_safe = None
+        
+        # Update all processes to match new resource count
+        current_res_count = len(res)
+        for p in st.session_state.processes:
+            # Pad or trim allocation/max/need arrays
+            while len(p.allocation) < current_res_count:
+                p.allocation.append(0)
+                p.max.append(10)
+                p.need.append(10)
+            while len(p.allocation) > current_res_count:
+                p.allocation.pop()
+                p.max.pop()
+                p.need.pop()
+        
+        st.session_state.feedback = f"✅ Resources updated to [{', '.join(map(str, res))}]"
+        force_update()
     except ValueError:
-        st.sidebar.error("⚠️  Enter only numbers separated by commas.")
-        return
-    st.session_state.total_resources = res
-    st.session_state.is_safe = None
+        st.session_state.feedback = "❌ Invalid resource values! Use numbers separated by commas"
+        force_update()
 
-
-def handle_request(pid: int, req_str: str):
-    """Mirrors requestResources() in os-logic.ts."""
+def handle_request(pid, req_str):
     try:
         req = [int(x.strip()) for x in req_str.split(",")]
     except ValueError:
-        st.session_state.request_log = ["❌  Invalid request format."]
+        st.session_state.feedback = "❌ Invalid request format"
+        force_update()
+        return
+
+    if len(req) != len(st.session_state.total_resources):
+        st.session_state.feedback = f"❌ Enter exactly {len(st.session_state.total_resources)} values"
+        force_update()
         return
 
     available = get_available()
     state = SystemState(
-        processes       = st.session_state.processes,
-        total_resources = st.session_state.total_resources,
-        available       = available,
+        processes=st.session_state.processes,
+        total_resources=st.session_state.total_resources,
+        available=available,
     )
     result = request_resources(state, pid, req)
-    st.session_state.request_log = [result.message]
+    st.session_state.feedback = result.message
     if result.granted and result.new_state:
-        st.session_state.processes       = result.new_state.processes
+        st.session_state.processes = result.new_state.processes
         st.session_state.total_resources = result.new_state.total_resources
-        st.session_state.is_safe         = None   # Force re-run
+        st.session_state.is_safe = None
+    force_update()
 
-
-def handle_delete_process(pid: int):
-    """Remove a process by ID (extra Python-only feature)."""
-    st.session_state.processes = [
-        p for p in st.session_state.processes if p.id != pid
-    ]
-    # Re-assign IDs to stay contiguous
+def handle_delete_process(pid):
+    if len(st.session_state.processes) <= 1:
+        st.session_state.feedback = "❌ Cannot delete the last process"
+        force_update()
+        return
+    
+    st.session_state.processes = [p for p in st.session_state.processes if p.id != pid]
     for i, p in enumerate(st.session_state.processes):
-        p.id   = i
+        p.id = i
         p.name = f"P{i}"
     st.session_state.is_safe = None
+    st.session_state.feedback = f"✅ Process P{pid} removed"
+    force_update()
+
+def handle_edit_process(pid, alloc_str, max_str):
+    try:
+        new_alloc = [int(x.strip()) for x in alloc_str.split(",")]
+        new_max = [int(x.strip()) for x in max_str.split(",")]
+    except ValueError:
+        st.session_state.feedback = "❌ Invalid input"
+        force_update()
+        return
+    
+    n = len(st.session_state.total_resources)
+    if len(new_alloc) != n or len(new_max) != n:
+        st.session_state.feedback = f"❌ Enter exactly {n} values"
+        force_update()
+        return
+    
+    for p in st.session_state.processes:
+        if p.id == pid:
+            p.allocation = new_alloc
+            p.max = new_max
+            p.need = calculate_need(new_max, new_alloc)
+            break
+    
+    st.session_state.is_safe = None
+    st.session_state.feedback = f"✅ Process P{pid} updated!"
+    force_update()
 
 
 # ============================================================================
-# 5.  Render Helpers  (equivalent to React sub-components)
+# Dynamic UI Components
 # ============================================================================
-
-# ---------------------------------------------------------------------------
-# 5a. Header  (mirrors <header> in App.tsx)
-# ---------------------------------------------------------------------------
 
 def render_header():
-    st.markdown("""
+    st.markdown(f"""
     <div class="header-banner">
-      <span style="font-size:2.6rem">🛡️</span>
-      <div>
-        <p class="header-title">OS Deadlock Defender</p>
-        <p class="header-subtitle">Banker's Algorithm &amp; Resource Allocation Graph Toolkit</p>
-        <div class="header-badges">
-          <span class="badge">⚡ Real-time Simulation</span>
-          <span class="badge">🖥️ Resource Monitoring</span>
-          <span class="badge">🔒 Deadlock Prevention</span>
-          <span class="badge">📊 Visual RAG</span>
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <div style="background: linear-gradient(135deg, #0ea5e9, #3b82f6); border-radius: 60px; padding: 0.8rem; box-shadow: 0 0 20px rgba(14,165,233,0.5);">
+                    <span style="font-size: 2rem;">🛡️</span>
+                </div>
+                <div>
+                    <h1 class="header-title">OS DEADLOCK DEFENDER</h1>
+                    <p style="color: #94a3b8;">Banker's Algorithm | Dynamic Matrices | Real-time Updates</p>
+                </div>
+            </div>
+            <div style="display: flex; gap: 1rem;">
+                <div class="stat-card"><div class="stat-value">{len(st.session_state.processes)}</div><div class="stat-label">PROCESSES</div></div>
+                <div class="stat-card"><div class="stat-value">{len(st.session_state.total_resources)}</div><div class="stat-label">RESOURCES</div></div>
+            </div>
         </div>
-      </div>
     </div>
     """, unsafe_allow_html=True)
 
-
-# ---------------------------------------------------------------------------
-# 5b. Sidebar Controls  (mirrors Dashboard.tsx)
-# ---------------------------------------------------------------------------
 
 def render_sidebar():
-    """
-    The full sidebar is the Python equivalent of Dashboard.tsx —
-    the control panel for adding processes, setting resources, and running simulations.
-    """
-    st.sidebar.markdown("## ⚙️ Control Panel")
-
-    # ── System Resources ──────────────────────────────────────────────
-    st.sidebar.markdown("### 📦 System Resources")
-    current_res = ",".join(map(str, st.session_state.total_resources))
-    res_input   = st.sidebar.text_input(
-        "Total resources (comma-separated)",
-        value=current_res,
-        help="e.g. 10,5,7 means Resource A=10, B=5, C=7",
-        key="res_input"
-    )
-    if st.sidebar.button("🔄 Update Resources"):
-        handle_update_resources(res_input)
-        st.rerun()
-
-    available = get_available()
-    st.sidebar.markdown(
-        f"**Available Now:** `{available}`",
-    )
-    st.sidebar.divider()
-
-    # ── Add Process ───────────────────────────────────────────────────
-    st.sidebar.markdown("### ➕ Add New Process")
-    n_res     = len(st.session_state.total_resources)
-    placeholder = ",".join(["0"] * n_res)
-
-    alloc_in  = st.sidebar.text_input("Allocation", value="",
-                                       placeholder=placeholder,
-                                       key="add_alloc")
-    max_in    = st.sidebar.text_input("Max Need",   value="",
-                                       placeholder=placeholder,
-                                       key="add_max")
-    if st.sidebar.button("➕ Add Process"):
-        if alloc_in.strip() and max_in.strip():
-            handle_add_process(alloc_in, max_in)
-            st.rerun()
-        else:
-            st.sidebar.warning("Fill in both Allocation and Max fields.")
-
-    st.sidebar.divider()
-
-    # ── Resource Request Simulation ────────────────────────────────────
-    st.sidebar.markdown("### 📥 Simulate Resource Request")
-    proc_names  = [p.name for p in st.session_state.processes]
-    if proc_names:
-        sel_proc  = st.sidebar.selectbox("Process", proc_names, key="req_proc")
-        req_input = st.sidebar.text_input("Request", placeholder=placeholder,
-                                           key="req_input")
-        if st.sidebar.button("📤 Submit Request"):
-            pid = int(sel_proc.replace("P", ""))
-            handle_request(pid, req_input)
-            st.rerun()
-    else:
-        st.sidebar.info("No processes defined yet.")
-
-    st.sidebar.divider()
-
-    # ── Run / Reset ────────────────────────────────────────────────────
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
-        if st.button("▶ Run", use_container_width=True, type="primary"):
-            run_simulation()
-            st.rerun()
-    with col2:
-        if st.button("↺ Reset", use_container_width=True):
+    with st.sidebar:
+        st.markdown("## 🎮 CONTROL PANEL")
+        st.markdown("---")
+        
+        # Resources
+        st.markdown("### 📦 RESOURCES")
+        current_res = ",".join(map(str, st.session_state.total_resources))
+        res_input = st.text_input("Total instances", value=current_res, key="res_input")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 Update", use_container_width=True):
+                handle_update_resources(res_input)
+        with col2:
+            if st.button("🎯 Run Algorithm", use_container_width=True, type="primary"):
+                run_simulation()
+        
+        available = get_available()
+        st.info(f"**Available:** `[{', '.join(map(str, available))}]`")
+        st.markdown("---")
+        
+        # Add Process
+        st.markdown("### ➕ ADD PROCESS")
+        n_res = len(st.session_state.total_resources)
+        placeholder = ",".join(["0"] * n_res)
+        
+        alloc_in = st.text_input("Allocation", placeholder=placeholder, key="add_alloc")
+        max_in = st.text_input("Max Need", placeholder=placeholder, key="add_max")
+        
+        if st.button("✨ Create", use_container_width=True):
+            if alloc_in and max_in:
+                handle_add_process(alloc_in, max_in)
+            else:
+                st.warning("Fill both fields")
+        
+        st.markdown("---")
+        
+        # Edit Process
+        if st.session_state.processes:
+            st.markdown("### ✏️ EDIT PROCESS")
+            proc_names = [p.name for p in st.session_state.processes]
+            edit_proc = st.selectbox("Select process", proc_names, key="edit_proc")
+            edit_alloc = st.text_input("New Allocation", placeholder=placeholder, key="edit_alloc")
+            edit_max = st.text_input("New Max Need", placeholder=placeholder, key="edit_max")
+            if st.button("💾 Save Changes", use_container_width=True):
+                if edit_alloc and edit_max:
+                    pid = int(edit_proc.replace("P", ""))
+                    handle_edit_process(pid, edit_alloc, edit_max)
+        
+        st.markdown("---")
+        
+        # Delete Process
+        if st.session_state.processes:
+            st.markdown("### 🗑️ DELETE PROCESS")
+            del_proc = st.selectbox("Select process", proc_names, key="del_proc")
+            if st.button("Remove", use_container_width=True):
+                pid = int(del_proc.replace("P", ""))
+                handle_delete_process(pid)
+        
+        st.markdown("---")
+        
+        # Request
+        if st.session_state.processes:
+            st.markdown("### 📨 REQUEST")
+            req_proc = st.selectbox("Process", proc_names, key="req_proc")
+            req_input = st.text_input("Request Vector", placeholder=placeholder, key="req_input")
+            if st.button("🚀 Submit", use_container_width=True):
+                pid = int(req_proc.replace("P", ""))
+                handle_request(pid, req_input)
+        
+        st.markdown("---")
+        
+        # Reset
+        if st.button("🔄 Reset All", use_container_width=True):
             handle_reset()
-            st.rerun()
+        
+        # Feedback
+        if st.session_state.feedback:
+            if "✅" in st.session_state.feedback:
+                st.success(st.session_state.feedback)
+            elif "❌" in st.session_state.feedback:
+                st.error(st.session_state.feedback)
+            else:
+                st.info(st.session_state.feedback)
 
 
-# ---------------------------------------------------------------------------
-# 5c. Matrix Tables  (mirrors MatrixTable.tsx)
-# ---------------------------------------------------------------------------
+def render_metrics():
+    available = get_available()
+    total_allocated = sum(sum(p.allocation) for p in st.session_state.processes)
+    total_available = sum(available)
+    
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("🖥️ Processes", len(st.session_state.processes))
+    c2.metric("📦 Resources", len(st.session_state.total_resources))
+    c3.metric("🔒 Allocated", total_allocated)
+    c4.metric("✅ Available", total_available)
+    
+    st.markdown("### 📊 Resource Utilization")
+    res_names = get_resource_names()
+    totals = st.session_state.total_resources
+    avail = available
+    
+    cols = st.columns(len(totals))
+    for i, (name, total, av) in enumerate(zip(res_names, totals, avail)):
+        used = total - av
+        pct = (used / total * 100) if total > 0 else 0
+        with cols[i]:
+            st.markdown(f"**{name}**: {used}/{total}")
+            st.progress(min(100, max(0, int(pct))))
+
 
 def render_matrices():
-    """
-    Renders Allocation, Max, and Need matrices side-by-side.
-    Mirrors the three <MatrixTable> calls in App.tsx.
-    """
-    procs      = st.session_state.processes
-    res_names  = get_resource_names()
-
-    if not procs:
-        st.info("No processes to display.")
-        return
-
-    col1, col2, col3 = st.columns(3)
-
-    def _df(field: str) -> pd.DataFrame:
-        data = {f"Res {r}": [getattr(p, field)[i] for p in procs]
-                for i, r in enumerate(res_names)}
-        df = pd.DataFrame(data, index=[p.name for p in procs])
-        return df
-
-    with col1:
-        st.markdown('<div class="matrix-header">📌 Allocation Matrix</div>',
-                    unsafe_allow_html=True)
-        st.dataframe(
-            _df("allocation").style
-            .set_properties(**{"background-color": "#f0fdf4", "color": "#14532d",
-                                "font-weight": "600", "text-align": "center"})
-            .set_table_styles([{
-                "selector": "th",
-                "props": [("background","#dcfce7"),("color","#15803d"),
-                           ("font-weight","bold"),("text-align","center")]
-            }]),
-            use_container_width=True, height=200
-        )
-
-    with col2:
-        st.markdown('<div class="matrix-header">📊 Max Need Matrix</div>',
-                    unsafe_allow_html=True)
-        st.dataframe(
-            _df("max").style
-            .set_properties(**{"background-color": "#fefce8", "color": "#713f12",
-                                "font-weight": "600", "text-align": "center"})
-            .set_table_styles([{
-                "selector": "th",
-                "props": [("background","#fef9c3"),("color","#854d0e"),
-                           ("font-weight","bold"),("text-align","center")]
-            }]),
-            use_container_width=True, height=200
-        )
-
-    with col3:
-        st.markdown('<div class="matrix-header">🔢 Current Need Matrix</div>',
-                    unsafe_allow_html=True)
-        st.dataframe(
-            _df("need").style
-            .set_properties(**{"background-color": "#eff6ff", "color": "#1e3a8a",
-                                "font-weight": "600", "text-align": "center"})
-            .set_table_styles([{
-                "selector": "th",
-                "props": [("background","#dbeafe"),("color","#1d4ed8"),
-                           ("font-weight","bold"),("text-align","center")]
-            }]),
-            use_container_width=True, height=200
-        )
-
-
-# ---------------------------------------------------------------------------
-# 5d. Process Table  (extra feature — shows all process details)
-# ---------------------------------------------------------------------------
-
-def render_process_table():
-    """Full process listing with delete buttons."""
-    procs     = st.session_state.processes
+    """Dynamic matrices that update in real-time"""
+    procs = st.session_state.processes
     res_names = get_resource_names()
-
+    
     if not procs:
-        st.info("No processes defined. Add one from the sidebar.")
+        st.info("✨ No processes yet. Add some using the sidebar!")
         return
+    
+    c1, c2, c3 = st.columns(3)
+    
+    # Allocation Matrix
+    with c1:
+        st.markdown("### 📌 Allocation Matrix")
+        alloc_data = []
+        for p in procs:
+            row = {"Process": p.name}
+            for i, r in enumerate(res_names):
+                row[f"R{r}"] = p.allocation[i] if i < len(p.allocation) else 0
+            alloc_data.append(row)
+        df1 = pd.DataFrame(alloc_data)
+        st.dataframe(df1, use_container_width=True, hide_index=True)
+    
+    # Max Matrix
+    with c2:
+        st.markdown("### 📊 Max Need Matrix")
+        max_data = []
+        for p in procs:
+            row = {"Process": p.name}
+            for i, r in enumerate(res_names):
+                row[f"R{r}"] = p.max[i] if i < len(p.max) else 0
+            max_data.append(row)
+        df2 = pd.DataFrame(max_data)
+        st.dataframe(df2, use_container_width=True, hide_index=True)
+    
+    # Need Matrix
+    with c3:
+        st.markdown("### 🔢 Current Need Matrix")
+        need_data = []
+        for p in procs:
+            row = {"Process": p.name}
+            for i, r in enumerate(res_names):
+                row[f"R{r}"] = p.need[i] if i < len(p.need) else 0
+            need_data.append(row)
+        df3 = pd.DataFrame(need_data)
+        st.dataframe(df3, use_container_width=True, hide_index=True)
 
-    rows = []
-    for p in procs:
-        rows.append({
-            "PID"        : p.name,
-            "Allocation" : str(p.allocation),
-            "Max"        : str(p.max),
-            "Need"       : str(p.need),
-            "Status"     : "✅ Finished" if p.finished else "⏳ Waiting",
-        })
 
-    df = pd.DataFrame(rows)
-    st.dataframe(df, use_container_width=True, hide_index=True)
-
-    # Delete buttons
-    with st.expander("🗑️ Remove a Process"):
-        proc_to_del = st.selectbox(
-            "Select process to remove",
-            [p.name for p in procs],
-            key="del_proc_select"
-        )
-        if st.button("Delete Process", key="del_proc_btn"):
-            pid = int(proc_to_del.replace("P", ""))
-            handle_delete_process(pid)
-            st.rerun()
-
-
-# ---------------------------------------------------------------------------
-# 5e. Simulation Results Banner  (mirrors the isSafe banner in Dashboard.tsx)
-# ---------------------------------------------------------------------------
-
-def render_results_banner():
-    is_safe = st.session_state.is_safe
-    seq     = st.session_state.safe_sequence
-    procs   = st.session_state.processes
-
-    if is_safe is None:
-        st.info("▶  Click **Run** in the sidebar to execute the Banker's Algorithm.")
+def render_results():
+    if st.session_state.is_safe is None:
         return
-
-    if is_safe:
-        seq_str = " → ".join(f"P{pid}" for pid in seq)
+    
+    if st.session_state.is_safe:
+        seq_str = " → ".join(f"P{pid}" for pid in st.session_state.safe_sequence)
         st.markdown(f"""
-        <div class="safe-banner">
-            ✅ &nbsp; System is <b>SAFE</b><br>
-            <span style="font-size:0.9rem; font-weight:400;">
-                Safe Sequence: &nbsp; <code>{seq_str}</code>
-            </span>
+        <div class="success-banner">
+            ✅ <strong>SYSTEM IS SAFE</strong><br>
+            <small>Safe Sequence: {seq_str}</small>
         </div>
         """, unsafe_allow_html=True)
     else:
-        st.markdown("""
-        <div class="unsafe-banner">
-            🚨 &nbsp; System is <b>UNSAFE</b> — Deadlock is possible!<br>
-            <span style="font-size:0.9rem; font-weight:400;">
-                No safe execution sequence exists with the current resource allocation.
-            </span>
+        st.markdown(f"""
+        <div class="error-banner">
+            🚨 <strong>SYSTEM IS UNSAFE</strong><br>
+            <small>Deadlock possible! No safe sequence exists.</small>
         </div>
         """, unsafe_allow_html=True)
 
 
-# ---------------------------------------------------------------------------
-# 5f. Simulation Log Console  (mirrors the log panel in Dashboard.tsx)
-# ---------------------------------------------------------------------------
-
-def render_log_console():
-    log = st.session_state.simulation_log
-
-    st.markdown("#### 🖥️ Algorithm Execution Log")
-
-    if not log:
-        st.markdown(
-            '<div class="log-console"><span class="log-line">'
-            '<span class="step">&gt;</span> Waiting for simulation…'
-            '</span></div>',
-            unsafe_allow_html=True
-        )
+def render_log():
+    st.markdown("### 📜 Algorithm Log")
+    
+    if not st.session_state.simulation_log:
+        st.info("⚡ Click 'Run Algorithm' to execute Banker's Algorithm")
         return
-
-    lines_html = ""
-    for i, line in enumerate(log):
-        css_class = "safe" if "SAFE" in line else ("unsafe" if "UNSAFE" in line else "")
-        lines_html += (
-            f'<div class="log-line">'
-            f'<span class="step">[{i+1:02d}]</span>'
-            f'<span class="{css_class}">{line}</span>'
-            f'</div>'
-        )
-
-    st.markdown(
-        f'<div class="log-console">{lines_html}</div>',
-        unsafe_allow_html=True
-    )
-
-
-# ---------------------------------------------------------------------------
-# 5g. Request Log  (extra feature for resource request simulation)
-# ---------------------------------------------------------------------------
-
-def render_request_log():
-    log = st.session_state.request_log
-    if not log:
-        return
-    for msg in log:
-        if "GRANTED" in msg or "✅" in msg:
-            st.success(msg)
-        elif "DENIED" in msg or "❌" in msg or "🚫" in msg:
-            st.error(msg)
-        elif "wait" in msg.lower() or "⏳" in msg:
-            st.warning(msg)
+    
+    log_html = '<div class="log-console">'
+    for i, line in enumerate(st.session_state.simulation_log):
+        if "✅" in line or "SAFE" in line:
+            css = "log-success"
+        elif "❌" in line or "UNSAFE" in line:
+            css = "log-error"
         else:
-            st.info(msg)
+            css = "log-info"
+        log_html += f'<div class="log-line"><span class="log-time">[{i+1:02d}]</span><span class="{css}">{line}</span></div>'
+    log_html += '</div>'
+    st.markdown(log_html, unsafe_allow_html=True)
 
-
-# ---------------------------------------------------------------------------
-# 5h. Resource Allocation Graph  (mirrors ResourceGraph.tsx)
-# ---------------------------------------------------------------------------
 
 def render_rag():
-    """
-    Plotly-powered RAG, equivalent to the ReactFlow-based ResourceGraph.tsx.
-    • Green circles  = Processes
-    • Blue squares   = Resources
-    • Blue arrows    = Allocation (Resource → Process)
-    • Red arrows     = Need       (Process  → Resource)
-    """
-    procs     = st.session_state.processes
-    res_names = get_resource_names()
-    totals    = st.session_state.total_resources
-
-    fig = build_rag_figure(procs, res_names, totals)
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-    # Legend explanation
-    leg1, leg2, leg3 = st.columns(3)
-    with leg1:
-        st.markdown("🟢 **Circle** = Process node")
-    with leg2:
-        st.markdown("🔵 **Square** = Resource node")
-    with leg3:
-        st.markdown("🔵 Solid = Allocated &nbsp;&nbsp; 🔴 Dashed = Need/Request")
-
-
-# ---------------------------------------------------------------------------
-# 5i. Statistics Panel  (extra visual feature)
-# ---------------------------------------------------------------------------
-
-def render_stats():
-    procs     = st.session_state.processes
-    totals    = st.session_state.total_resources
-    available = get_available()
-    res_names = get_resource_names()
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("🖥️ Processes", len(procs))
-    c2.metric("📦 Resource Types", len(totals))
-    total_alloc = sum(sum(p.allocation) for p in procs)
-    c3.metric("🔒 Total Allocated", total_alloc)
-    c4.metric("✅ Total Available", sum(available))
-
-    # Per-resource utilisation bars
-    if totals:
-        st.markdown("##### Resource Utilisation")
-        util_cols = st.columns(len(totals))
-        for i, (rname, total, avail) in enumerate(zip(res_names, totals, available)):
-            used  = total - avail
-            pct   = (used / total * 100) if total > 0 else 0
-            util_cols[i].markdown(f"**{rname}** — {used}/{total} used ({pct:.0f}%)")
-            util_cols[i].progress(max(0, min(100, int(pct))))
-
-
-# ---------------------------------------------------------------------------
-# 5j. Project Info / About section  (requested in original prompt)
-# ---------------------------------------------------------------------------
-
-def render_about():
-    st.markdown("""
-    <div class="section-card">
-    <div class="section-title">📚 About This Toolkit</div>
-
-    <b>Real-World Problem Solved:</b>
-    Deadlocks occur in databases, operating systems, and distributed systems when
-    processes indefinitely wait for each other's resources. This toolkit implements
-    the OS-level prevention mechanisms that systems like MySQL InnoDB and Linux kernel use.
-
-    <br><br>
-    <b>Banker's Algorithm:</b>
-    Developed by Edsger Dijkstra, it works by simulating resource allocation and
-    checking if the resulting state is <em>safe</em> — i.e., there exists at least
-    one order in which all processes can complete without deadlock.
-
-    <br><br>
-    <b>Key OS Concepts Demonstrated:</b>
-    <ul>
-        <li>🔒 <b>Deadlock Prevention</b>  — Never enter unsafe state</li>
-        <li>🔍 <b>Deadlock Detection</b>   — Identify circular wait in RAG</li>
-        <li>📊 <b>Resource Allocation</b>  — Allocation, Max, Need matrices</li>
-        <li>⚙️ <b>Process Scheduling</b>  — Safe sequence = execution order</li>
-        <li>🧠 <b>Memory Management</b>   — Track held vs. requested resources</li>
-    </ul>
-
-    <b>Real-Life Applications:</b>
-    Database transaction managers (MySQL, PostgreSQL),
-    Linux kernel resource locks,
-    Cloud orchestration (Kubernetes),
-    Distributed system consensus protocols.
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("### 🌐 Resource Allocation Graph")
+    
+    if not st.session_state.processes:
+        st.info("✨ No processes to visualize")
+        return
+    
+    fig = build_rag_figure(
+        st.session_state.processes,
+        get_resource_names(),
+        st.session_state.total_resources
+    )
+    fig.update_layout(height=500, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+    st.plotly_chart(fig, use_container_width=True, key=f"rag_{st.session_state.update_counter}")
 
 
 # ============================================================================
-# 6.  Main Application Layout  (mirrors the full JSX return in App.tsx)
+# Main
 # ============================================================================
 
 def main():
-    # ── Header ──────────────────────────────────────────────────────────
     render_header()
-
-    # ── Sidebar ─────────────────────────────────────────────────────────
     render_sidebar()
-
-    # ── Statistics ──────────────────────────────────────────────────────
-    with st.container():
-        st.markdown('<div class="section-card">', unsafe_allow_html=True)
-        render_stats()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    # ── Simulation Result + Request Log ─────────────────────────────────
-    res_col, req_col = st.columns([2, 1])
-    with res_col:
-        render_results_banner()
-    with req_col:
-        render_request_log()
-
-    st.divider()
-
-    # ── Main Tabs ────────────────────────────────────────────────────────
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "🗂️  Matrices",
-        "🌐  Resource Allocation Graph",
-        "🖥️  Algorithm Log",
-        "ℹ️  About / Docs",
-    ])
-
+    
+    render_metrics()
+    render_results()
+    
+    tab1, tab2, tab3 = st.tabs(["📊 Matrices", "🌐 Resource Graph", "📜 Algorithm Log"])
+    
     with tab1:
-        st.markdown("### Process State Matrices")
         render_matrices()
-        st.divider()
-        st.markdown("### 📋 Process Table")
-        render_process_table()
-
     with tab2:
-        st.markdown("### 🌐 Resource Allocation Graph (RAG)")
-        st.caption(
-            "Visualises the current deadlock state. "
-            "Blue arrows = allocated resources. Red arrows = resource requests (need)."
-        )
         render_rag()
-
     with tab3:
-        render_log_console()
-        if st.session_state.simulation_log:
-            log_text = "\n".join(
-                f"[{i+1:02d}] {line}"
-                for i, line in enumerate(st.session_state.simulation_log)
-            )
-            st.download_button(
-                "⬇️  Export Log",
-                data=log_text,
-                file_name="banker_algorithm_log.txt",
-                mime="text/plain"
-            )
+        render_log()
+    
+    st.markdown("""
+    <div class="footer">
+        OS Deadlock Defender · Dynamic Matrices · Real-time Updates · Banker's Algorithm
+    </div>
+    """, unsafe_allow_html=True)
 
-    with tab4:
-        render_about()
-        st.markdown("---")
-        st.markdown("""
-        **Technology Stack:**
-        | Component | Technology | Why |
-        |-----------|-----------|-----|
-        | UI Framework | **Streamlit** | Rapid Python web apps, no JS needed |
-        | Visualisation | **Plotly** | Interactive, publication-quality graphs |
-        | Data Tables | **Pandas** | Industry-standard tabular data in Python |
-        | Core Logic | **Python dataclasses** | Clean, typed, mirrors TypeScript interfaces |
-        | Algorithm | **Banker's Algorithm** | Standard OS deadlock avoidance algorithm |
-        """)
-
-    # ── Footer ──────────────────────────────────────────────────────────
-    st.markdown(
-        '<div class="footer">'
-        'OS Deadlock Defender &nbsp;·&nbsp; '
-        'Built with Python · Streamlit · Plotly &nbsp;·&nbsp; '
-        'Banker\'s Algorithm Implementation'
-        '</div>',
-        unsafe_allow_html=True
-    )
-
-
-# ============================================================================
-# 7.  Entry Point
-# ============================================================================
 
 if __name__ == "__main__":
     main()
